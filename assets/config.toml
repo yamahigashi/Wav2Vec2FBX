@@ -1,0 +1,240 @@
+# 発音記号の意味は
+# international phonetic alphabet についての解説を参照
+# https://en.wikipedia.org/wiki/International_Phonetic_Alphabet
+# https://www.dyslexia-reading-well.com/44-phonemes-in-english.html
+#
+# `[ipa_to_arpabet]` エントリに wav から解析した音素と それをFBXで表現するときのノード の対応付けをする
+# ipa フルスペック必要ない場合、なんかいい感じに近い口を同じの入れておくとよい
+# [ipa_to_arpabet_simple] を参考
+
+[ipa_to_arpabet]
+# ----------------------------------------------
+'ɔ'    = "a"
+'ɑ'   = "a"
+'i'    = "i"
+'u'    = "u"
+
+'ɛ'    = "e"
+'e'    = "e"
+'ɪ'    = "i"
+'ʊ'    = "u"
+'ʌ'    = "a"
+'ə'    = "a"
+'æ'   = "e"
+'e ː' = "e"
+
+# Vowels - Diphthongs
+'eɪ'   = "e"
+'aɪ'   = "y"
+'oʊ'   = "o"
+'aʊ'   = "o"
+'ɔɪ'   = "y"
+'o ː' = "o"
+
+
+#  stops
+'p'    = "p"
+'b'    = "p"
+'t'    = "p"
+'d'    = "p"
+'k'    = "p"
+'g'    = "p"
+#  affricates
+'tʃ'   = "ch"
+'dʒ'   = "ch"
+#  fricatives
+'f'    = "f"
+'v'    = "v"
+'θ'   = "th"
+'ð'   = "th"
+'s'    = "s"
+'z'    = "z"
+'ʃ'    = "s"
+'ʒ'    = "z"
+'h'    = "h"
+#  nasals
+'m'    = "m"
+'n'    = "m"
+'ŋ'   = "m"
+#  liquids
+'l'    = "l"
+'r'    = "r"
+#  r-colored vowels
+'ɜr'   = "a"
+'ər'   = "a"
+#  semivowels
+'w'    = "w"
+'y'    = 'j'
+# special
+'ɚ'    = "a"
+'ɨ'    = "i"
+'oː'  = "o"
+'o'    = "o"
+'ʉ'    = "u"
+'c'    = "ch"
+'ɾ'    = "z"
+'l̩'    = "e"
+'m̩'    = "m"
+'n̩'    = "n"
+'j'    = "j"
+'ɾ̃'    = "n"
+'ʔ'    = "p"
+'ɹ'    = "r"
+'ʍ'    = "u"
+'ə̥'    = "a"
+'b̚'    = "b"
+'d̚'    = "z"
+'ŋ̍'   = "m"
+'ɡ̚'   = "g"
+'ɦ'    = "h"
+'k̚'    = "k"
+'p̚'    = "p"
+'t̚'    = "p"
+
+
+
+
+[ipa_to_arpabet_default]  # 参照用
+'ɔ'  = "ao"
+'ɑ'  = "aa"
+'i'  = "iy"
+'u'  = "uw"
+
+'ɛ'  = "eh"  # modern versions use 'e' instead of 'ɛ'
+'e'  = "eh" 
+'ɪ'  = "ih"
+'ʊ'  = "uh"
+'ʌ'  = "ah"
+'ə'  = "ax"
+'æ'  = "ae"
+
+# Vowels - Diphthongs
+'eɪ'  = "ey"
+'aɪ'  = "ay"
+'oʊ'  = "ow"
+'aʊ'  = "aw"
+'ɔɪ'  = "oy"
+
+#  stops
+'p'  = "p"
+'b'  = "b"
+'t'  = "t"
+'d'  = "d"
+'k'  = "k"
+'g'  = "g"
+#  affricates
+'tʃ'  = "ch"
+'dʒ'  = "jh"
+#  fricatives
+'f'  = "f"
+'v'  = "v"
+'θ'  = "th"
+'ð'  = "dh"
+'s'  = "s"
+'z'  = "z"
+'ʃ'  = "sh"
+'ʒ'  = "zh"
+'h'  = "hh"
+#  nasals
+'m'  = "m"
+'n'  = "n"
+'ŋ'  = "ng"
+#  liquids
+'l'  = "l"
+'r'  = "r"
+#  r-colored vowels
+'ɜr'  = "er"
+'ər'  = "axr"
+#  semivowels
+'w'  = "w"
+'y'  = 'j' 
+# special
+'ɚ'   = "axr"
+'ɨ'   = "ix"
+'oː' = "ou"
+'o'   = "ow"
+'ʉ'   = "ux"
+'c'   = "ch"
+'ɾ'   = "dx"
+'l̩'   = "el"
+'m̩'   = "em"
+'n̩'   = "en"
+'j'   = "y"
+'ɾ̃'   = "nx"
+'ʔ'   = "q"
+'ɹ'   = "r"
+'ʍ'   = "wh"
+'ə̥'   = "ax-h"
+'b̚'   = "bcl"
+'d̚'   = "dcl"
+'ŋ̍'  = "eng"
+'ɡ̚'  = "gcl"
+'ɦ'   = "hv"
+'k̚'   = "kcl"
+'p̚'   = "pcl"
+'t̚'   = "tcl"
+
+
+[ipa_to_arpabet_simple]  # 簡易口パク
+'ɑ'  = "aa"
+'æ'  = "ae"
+'ʌ'   = "ah"
+'ɔ'   = "ao"
+'W'   = "aw"
+'ə'   = "ax"
+'ɚ'   = "axr"
+'Y'   = "ay"
+'ɛ'   = "eh"
+'ɝ'   = "er"
+'e'   = "ey"
+'ɪ'   = "ih"
+'ɨ'   = "ix"
+'i'   = "iy"
+'oː' = "ou"
+'o'   = "ow"
+'O'   = "oy"
+'ʊ'   = "uh"
+'u'   = "uw"
+'ʉ'   = "ux"
+'b'   = "b"
+'C'   = "ch"
+'d'   = "d"
+'ð'  = "dh"
+'ɾ'   = "dx"
+'l̩'   = "el"
+'m̩'   = "em"
+'n̩'   = "en"
+'f'   = "f"
+'g'   = "g"
+'h'   = "h"
+'J'   = "jh"
+'k'   = "k"
+'l'   = "l"
+'m'   = "m"
+'n'   = "n"
+'ŋ'  = "ng"
+'ɾ̃'   = "nx"
+'p'   = "p"
+'ʔ'   = "q"
+'ɹ'   = "r"
+'s'   = "s"
+'ʃ'   = "sh"
+'t'   = "t"
+'θ'  = "th"
+'v'   = "v"
+'w'   = "w"
+'ʍ'   = "wh"
+'j'   = "y"
+'z'   = "z"
+'ʒ'   = "zh"
+'ə̥'   = "ax-h"
+'b̚'   = "bcl"
+'d̚'   = "dcl"
+'ŋ̍'  = "eng"
+'ɡ̚'  = "gcl"
+'ɦ'   = "hv"
+'k̚'   = "kcl"
+'p̚'   = "pcl"
+'t̚'   = "tcl"
+'S'   = "epi"
+'P'   = "pau"
