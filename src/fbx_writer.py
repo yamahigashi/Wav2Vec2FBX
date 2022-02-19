@@ -24,11 +24,11 @@ if sys.version_info >= (3, 0):
 ##############################################################################
 
 
-def write(keys, fbx_path, duration_sec):
-    # type: (Dict[Text, List], pathlib.Path, float) -> None
+def write(keys, fbx_path):
+    # type: (Dict[Text, List], pathlib.Path) -> None
 
     sdk, scene = FbxCommon.InitializeSdkObjects()
-    layer = create_base_anim_structure(scene, duration_sec)
+    layer = create_base_anim_structure(scene)
 
     for node_name, keyframes in keys.items():
         node, curve = add_node(sdk, scene, layer, node_name)
@@ -42,7 +42,7 @@ def write(keys, fbx_path, duration_sec):
     sdk.Destroy()
 
 
-def create_base_anim_structure(scene, duration_sec):
+def create_base_anim_structure(scene):
     anim_stack = FbxCommon.FbxAnimStack.Create(scene, "Take 001")
     # anim_stack.LocalStop = FbxCommon.FbxTime(duration_sec)
     anim_layer = FbxCommon.FbxAnimLayer.Create(scene, "Base Layer")
