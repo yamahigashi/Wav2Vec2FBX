@@ -323,13 +323,11 @@ def split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35):
         seek_step=1,
     )
 
-    if not audio_chunks:
+    if not audio_chunks or len(audio_chunks) == 1 or not silences:
         return [], []
 
     if silences[0][0] == 0:
         pass
-        # to skip initial silence
-        # silences = silences[1:]
     else:
         silences.insert(0, (0, 0))
 
