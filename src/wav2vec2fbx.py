@@ -2,22 +2,27 @@ import os
 import sys
 import copy
 from itertools import groupby
+import contextlib
 from collections import defaultdict
 import argparse
 import pathlib
-import toml
+import tempfile
 
+import toml
 import torch
 # from torch._C import default_generator
+
+import librosa
+import pydub
+import pydub.utils
+import pydub.silence
+
 
 from transformers import (
     Wav2Vec2Processor,
     Wav2Vec2ForCTC,
     # Wav2Vec2PhonemeCTCTokenizer,
 )
-# from transformers.models.wav2vec2.tokenization_wav2vec2 import VOCAB_FILES_NAMES
-
-import librosa
 
 import fbx_writer
 
@@ -26,6 +31,7 @@ import fbx_writer
 if sys.version_info >= (3, 0):
     # For type annotation
     from typing import (  # NOQA: F401 pylint: disable=unused-import
+        MutableMapping,
         Optional,
         Dict,
         List,
@@ -133,21 +139,21 @@ def cals_power(vals, ids):
 
 
 def process_audio(processor, model, audio_filepath):
+    # type: (Wav2Vec2Processor, Wav2Vec2ForCTC, Text) -> ...
+
     speech, sample_rate = librosa.load(audio_filepath, sr=16000)
     input_values = processor(speech, sampling_rate=sample_rate, return_tensors="pt").input_values.cpu()
     duration_sec = input_values.shape[1] / sample_rate
 
-    print(f"process {duration_sec}sec audio file.")
-
     logits = model(input_values).logits
 
     predicted_ids = torch.argmax(logits, dim=-1)
-    vals, ids = torch.topk(logits, k=3, dim=-1)
-    transcription = processor.decode(predicted_ids[0]).lower()
-    print(transcription)
+    probabilities, ids = torch.topk(logits, k=3, dim=-1)
 
-    return duration_sec, vals, ids
-    # return duration_sec, predicted_ids, transcription
+    transcription = processor.decode(predicted_ids[0]).lower()
+    print(f"process {duration_sec:.3f}sec audio file as {transcription}")
+
+    return duration_sec, probabilities, ids
 
 
 def alignment(processor, duration_sec, predicted_ids, transcription):
@@ -177,14 +183,29 @@ def alignment(processor, duration_sec, predicted_ids, transcription):
     return words, word_start_times, word_end_times
 
 
-def generate_keyframes(conf, processor, duration_sec, vals, ids):
+class CurveKey(tuple):
+    """Contains keyframe(time in seconds), keyvalue pair."""
+    def __init__(self, time, value):
+        super().__init__()
 
-    animation_keys = []
+
+class AnimCurve():
+    """Contains CurveKeys."""
+
+    def add_key(self, key):
+        pass
+
+
+def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset):
+    # type: (MutableMapping[Text, Any], Wav2Vec2Processor, float, torch.Tensor, torch.Tensor, float) -> Dict
+
+    # animation_frames represents all frame plotted including empty move.
+    animation_frames = []  # type: List[Dict[Text, float]]
     ipa_to_arpabet = load_ipa_arpabet_table(conf)
 
-    for i, (top3_vals, top3_ids) in enumerate(zip(vals[0], ids[0])):
+    for i, (top3_vals, top3_ids) in enumerate(zip(probabilities[0], ids[0])):
 
-        animation_keys.append({})
+        animation_frames.append({})
 
         if is_silence(top3_vals, top3_ids):
             continue
@@ -195,26 +216,27 @@ def generate_keyframes(conf, processor, duration_sec, vals, ids):
                 ipa = processor.decode(index.item()).lower()
                 arpabet = ipa_to_arpabet.get(ipa)
                 if not arpabet:
-                    print(f"ipa not found {ipa}")
+                    print(f"ipa not found in the config.toml table replacing _: {ipa}")
+                    arpabet = ipa_to_arpabet.get("default", "_")
 
-                if arpabet in animation_keys[i]:
-                    animation_keys[i][arpabet] = 10.0
+                if arpabet in animation_frames[i]:
+                    animation_frames[i][arpabet] = 10.0
                 else: 
-                    animation_keys[i][arpabet] = val
+                    animation_frames[i][arpabet] = val
 
-    # print(len(vals[0]), len(animation_keys), duration_sec)
-    for i, keys in enumerate(copy.deepcopy(animation_keys)):
+    # TODO: support the ipa that has multiple visemes.
+
+    # Since only voiced keys are placed in the `animation_frames` here,
+    # we need to specify the start and end frame before and after the key.
+    for i, keys in enumerate(copy.deepcopy(animation_frames)):
         for k, _ in keys.items():
-            set_zero_key(animation_keys, k, i)
+            set_zero_key(animation_frames, k, i)  # animation_frames got side effect
 
     object_based_keys = defaultdict(lambda: [])
-    for i, keys in enumerate(copy.deepcopy(animation_keys)):
-        sec = i / len(vals[0]) * duration_sec
+    for i, keys in enumerate(copy.deepcopy(animation_frames)):
+        sec = (i / len(probabilities[0])) * duration_sec + offset
         for phon, val in keys.items():
             object_based_keys[phon].append((sec, val))
-
-    # for phon, keys in object_based_keys.items():
-    #     print(phon, keys)
 
     return object_based_keys
 
@@ -226,22 +248,26 @@ def set_zero_key(animation_keys, phon, frame_index):
     next_key_index_start = min(frame_index + 1, len(animation_keys))
     next_key_index_stop = min(frame_index + INTERPOLATION_FRAME + 1, len(animation_keys))
 
+    # ------------------------------
     for frame in range(prev_key_index_start, prev_key_index_stop, -1):
         if phon in animation_keys[frame]:
             break
         # print("prev", frame, animation_keys[frame])
     else:
-        animation_keys[frame - 1][phon] = 0.0  # type: ignore  #  i know this dangerous...
+        with contextlib.suppress(IndexError, UnboundLocalError, AttributeError):
+            animation_keys[frame - 1][phon] = 0.0  # type: ignore  #  i know this dangerous...
 
+    # ------------------------------
     for frame in range(next_key_index_start, next_key_index_stop):
         if phon in animation_keys[frame]:
             break
     else:
-        animation_keys[frame + 1][phon] = 0.0  # type: ignore
+        with contextlib.suppress(IndexError, UnboundLocalError, AttributeError):
+            animation_keys[frame + 1][phon] = 0.0  # type: ignore
 
 
 def load_ipa_arpabet_table(conf):
-    # type: (Dict) -> Dict[Text, Text]
+    # type: (MutableMapping[Text, Any]) -> Dict[Text, Text]
 
     return conf.get("ipa_to_arpabet", {})
 
@@ -252,14 +278,107 @@ def main():
     config = load_config(args)
 
     audio_filepath = args.input_audiofile  # type: pathlib.Path
+    if audio_filepath.suffix != ".wav":
+        raise Exception("input audio is not wav")
     fbx_path = audio_filepath.with_suffix(".fbx")
 
+    files_and_offsets = split_audio(audio_filepath)
     processor, model = load_models()
-    duration_sec, vals, ids = process_audio(processor, model, audio_filepath)
-    keys = generate_keyframes(config, processor, duration_sec, vals, ids)
-    # words, word_start_times, word_end_times = alignment(processor, duration_sec, predicted_ids, transcription)
-    # print(words, word_start_times, word_end_times)
-    fbx_writer.write(keys, fbx_path, duration_sec)
+
+    total_keys = {}
+    for file_path, offset in files_and_offsets:
+        duration_sec, probabilities, ids = process_audio(processor, model, file_path)
+        # print(f"{file_path}: duration: {duration_sec}, offset:{offset}")
+        keys = generate_keyframes(config, processor, duration_sec, probabilities, ids, offset)
+
+        for key, value in keys.items():
+            if key in total_keys:
+                total_keys[key].extend(value)
+            else:
+                total_keys[key] = value
+
+        # words, word_start_times, word_end_times = alignment(processor, duration_sec, predicted_ids, transcription)
+        # print(words, word_start_times, word_end_times)
+
+    fbx_writer.write(total_keys, fbx_path)
+
+
+def split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35):
+    # type: (pathlib.Path, int, int) -> Tuple
+
+    keep_silence_ms = min_silence_len
+
+    sound_file = pydub.AudioSegment.from_wav(audio_file.as_posix())
+    audio_chunks = pydub.silence.split_on_silence(
+        sound_file,
+        min_silence_len=min_silence_len,
+        silence_thresh=silence_thresh,
+        keep_silence=keep_silence_ms,
+        seek_step=1,
+    )
+    silences = pydub.silence.detect_silence(
+        sound_file,
+        min_silence_len=min_silence_len,
+        silence_thresh=silence_thresh,
+        seek_step=1,
+    )
+
+    if not audio_chunks:
+        return [], []
+
+    if silences[0][0] == 0:
+        pass
+        # to skip initial silence
+        # silences = silences[1:]
+    else:
+        silences.insert(0, (0, 0))
+
+    silences = [(x + keep_silence_ms if x > 0 else x, y - keep_silence_ms if y > 0 else y) for x, y in silences]
+
+    return audio_chunks, silences
+
+
+def split_audio(audio_file, min_silence_len=500, silence_thresh=-35, maximum_duration=5000):
+    # type: (pathlib.Path, int, int, int) -> List[Tuple[Text, float]]
+    """Split input audio by silence and returns splitted file paths and its
+    offset seconds.
+
+    Here milliseconds
+    """
+
+    print("Preprocess audio file begins. Split files by silence and that are too long")
+    audio_chunks, silences = split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35)
+    if not audio_chunks:
+        return [(audio_file.as_posix(), 0.0)]
+
+    # assert len(audio_chunks) == len(silences)  # nosec
+
+    results = []
+    chunk_count = 0
+    tempdir = tempfile.mkdtemp(audio_file.name)
+    for chunk, silence in zip(audio_chunks, silences):
+
+        duration = len(chunk)
+        if duration > maximum_duration:
+            average_duration_ms = duration / ((duration // maximum_duration) + 1)
+            over_chunks = pydub.utils.make_chunks(chunk, average_duration_ms)
+
+            for oc in over_chunks:
+                out_file = os.path.join(tempdir, "chunk{0}.wav".format(chunk_count))
+                print("exporting", out_file)
+                oc.export(out_file, format="wav")
+                results.append((out_file, silence[1] / 1000.))
+                chunk_count += 1  # noqa
+
+        else:
+            out_file = os.path.join(tempdir, "chunk{0}.wav".format(chunk_count))
+            print("exporting", out_file)
+            chunk.export(out_file, format="wav")
+
+            chunk_count += 1
+            results.append((out_file, silence[1] / 1000.))
+
+    return results
 
 
 if __name__ == "__main__":
