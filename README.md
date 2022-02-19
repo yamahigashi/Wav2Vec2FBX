@@ -1,6 +1,7 @@
 # Wav2Vec2FBX
 
-Generate an FBX of a phoneme lip-sync animation from an audio file, using Wav2Vec2 to analyze the phonemes.
+> Generate an FBX of a phoneme lip-sync animation from an sigle audio file, using Wav2Vec2 to analyze the phonemes.
+> 
 ![alt text](https://github.com/yamahigashi/Wav2Vec2FBX/blob/doc/Screenshot_434.png?raw=true)
 
 
@@ -10,8 +11,8 @@ Table of contents
 <!--ts-->
    * [Installation](#installation)
      *  [Environment](#environment)
-     *  [Clone Repository](#clone_repository)
-     *  [FBX python SDK](#fbx_python_sdk)
+     *  [Clone Repository](#clone-repository)
+     *  [FBX python SDK](#fbx-python-sdk)
   *  [Run](#run)
   *  [Configuration](#configuration)
 <!--te-->
