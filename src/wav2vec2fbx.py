@@ -60,6 +60,7 @@ def parse_args():
 
 
 def load_config(args):
+    # type: (argparse.Namespace) -> MutableMapping[Text, Any]
 
     if args.config_file is not None:
         return toml.load(args.config_file)
@@ -71,23 +72,18 @@ def load_config(args):
         # unfrozen
         dir_ = os.path.dirname(os.path.realpath(__file__))
 
-    config_path = os.path.join(dir_, CONFIG_NAME)
-    if os.path.exists(config_path):
-        return toml.load(config_path)
+    config_paths = [
+        os.path.join(dir_, CONFIG_NAME),
+        os.path.join(dir_, "../", CONFIG_NAME),
+        os.path.join(dir_, "assets", CONFIG_NAME),
+        os.path.join(dir_, "../assets", CONFIG_NAME),
+    ]
 
-    config_path = os.path.join(dir_, "../", CONFIG_NAME)
-    if os.path.exists(config_path):
-        return toml.load(config_path)
+    for config_path in config_paths:
+        if os.path.exists(config_path):
+            return toml.load(config_path)
 
-    config_path = os.path.join(dir_, "assets", CONFIG_NAME)
-    if os.path.exists(config_path):
-        return toml.load(config_path)
-
-    config_path = os.path.join(dir_, "../assets", CONFIG_NAME)
-    if os.path.exists(config_path):
-        return toml.load(config_path)
-
-    raise Exception("config file not found {}".format(config_path))
+    raise Exception("config file not found {}".format(config_paths))
 
 
 def load_models(model_name='facebook/wav2vec2-large-960h-lv60-self'):
@@ -124,28 +120,29 @@ def is_silence(vals, ids):
     return False
 
 
-def cals_power(vals, ids):
+def calculate_voice_power(vals, ids):
+    # type: (torch.Tensor, torch.Tensor) -> Tuple[float, float, float]
 
     x, y, z = 0., 0., 0.
 
     if ids[0] == 0:
-        y = vals[1].item() + (10. - vals[0].item()) / 2.0
-        z = vals[2].item() + (10. - vals[0].item()) / 2.0
+        y = vals[1].item() + (10. - vals[0].item()) / 2.0  # type: ignore
+        z = vals[2].item() + (10. - vals[0].item()) / 2.0  # type: ignore
         if y < 5.:
             y = 0.
         if z < 5.:
             z = 0.
 
     else:
-        x = min(10.0, vals[0].item() * 1.5)
+        x = min(10.0, vals[0].item() * 1.5)  # type: ignore
         y = vals[1].item() if vals[1] > 4. else 0.
         z = vals[2].item() if vals[2] > 4. else 0.
 
-    return x, y, z
+    return x, y, z  # type: ignore
 
 
 def process_audio(processor, model, audio_filepath):
-    # type: (Wav2Vec2Processor, Wav2Vec2ForCTC, Text) -> ...
+    # type: (Wav2Vec2Processor, Wav2Vec2ForCTC, Text) -> Tuple[float, torch.Tensor, torch.Tensor]
 
     speech, sample_rate = librosa.load(audio_filepath, sr=16000)
     input_values = processor(speech, sampling_rate=sample_rate, return_tensors="pt").input_values.cpu()
@@ -160,33 +157,6 @@ def process_audio(processor, model, audio_filepath):
     print(f"process {duration_sec:.3f}sec audio file as {transcription}")
 
     return duration_sec, probabilities, ids
-
-
-def alignment(processor, duration_sec, predicted_ids, transcription):
-    """this is where the logic starts to get the start and end timestamp for each word."""
-
-    words = [w for w in transcription.split(' ') if len(w) > 0]
-    predicted_ids = predicted_ids[0].tolist()
-
-    ids_w_time = [(i / len(predicted_ids) * duration_sec, _id) for i, _id in enumerate(predicted_ids)]
-
-    # remove entries which are just "padding" (i.e. no characers are recognized)
-    ids_w_time = [i for i in ids_w_time if i[1] != processor.tokenizer.pad_token_id]
-    # print(ids_w_time)
-
-    # now split the ids into groups of ids where each group represents a word
-    split_ids_w_time = [list(group) for k, group in groupby(ids_w_time, lambda x: x[1] == processor.tokenizer.word_delimiter_token_id) if not k]
-
-    # assert len(split_ids_w_time) == len(words)  # make sure that there are the same number of id-groups as words. Otherwise something is wrong  # nosec
-
-    word_start_times = []
-    word_end_times = []
-    for cur_ids_w_time, cur_word in zip(split_ids_w_time, words):
-        _times = [_time for _time, _id in cur_ids_w_time]
-        word_start_times.append(min(_times))
-        word_end_times.append(max(_times))
-    
-    return words, word_start_times, word_end_times
 
 
 class CurveKey(tuple):
@@ -216,7 +186,7 @@ def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset
         if is_silence(top3_vals, top3_ids):
             continue
 
-        x, y, z = cals_power(top3_vals, top3_ids)
+        x, y, z = calculate_voice_power(top3_vals, top3_ids)
         for index, val in zip(top3_ids, (x, y, z)):
             if index != 0 and val > 0.:
                 ipa = processor.decode(index.item()).lower()
@@ -248,7 +218,9 @@ def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset
 
 
 def set_zero_key(animation_keys, phon, frame_index):
+    # type: (List[Dict[Text, float]], Text, int) -> ...
     """CAUTION: animation_keys is mutable and changed by calling this function."""
+
     prev_key_index_start = max(1, frame_index - 1)
     prev_key_index_stop = max(1, frame_index - INTERPOLATION_FRAME - 1)
     next_key_index_start = min(frame_index + 1, len(animation_keys))
@@ -303,9 +275,6 @@ def main():
                 total_keys[key].extend(value)
             else:
                 total_keys[key] = value
-
-        # words, word_start_times, word_end_times = alignment(processor, duration_sec, predicted_ids, transcription)
-        # print(words, word_start_times, word_end_times)
 
     fbx_writer.write(total_keys, fbx_path)
 
