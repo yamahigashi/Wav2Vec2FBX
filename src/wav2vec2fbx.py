@@ -24,7 +24,10 @@ from transformers import (
     # Wav2Vec2PhonemeCTCTokenizer,
 )
 
-import fbx_writer
+from . import (
+    fbx_writer,
+    audio_util,
+)
 
 ##############################################################################
 
@@ -65,19 +68,26 @@ def load_config(args):
     if args.config_file is not None:
         return toml.load(args.config_file)
 
-    config_path = os.path.join(os.path.dirname(__file__), CONFIG_NAME)
+    if getattr(sys, 'frozen', False):
+        # frozen
+        dir_ = os.path.dirname(sys.executable)
+    else:
+        # unfrozen
+        dir_ = os.path.dirname(os.path.realpath(__file__))
+
+    config_path = os.path.join(dir_, CONFIG_NAME)
     if os.path.exists(config_path):
         return toml.load(config_path)
 
-    config_path = os.path.join(os.path.dirname(__file__), "../", CONFIG_NAME)
+    config_path = os.path.join(dir_, "../", CONFIG_NAME)
     if os.path.exists(config_path):
         return toml.load(config_path)
 
-    config_path = os.path.join(os.path.dirname(__file__), "assets", CONFIG_NAME)
+    config_path = os.path.join(dir_, "assets", CONFIG_NAME)
     if os.path.exists(config_path):
         return toml.load(config_path)
 
-    config_path = os.path.join(os.path.dirname(__file__), "../assets", CONFIG_NAME)
+    config_path = os.path.join(dir_, "../assets", CONFIG_NAME)
     if os.path.exists(config_path):
         return toml.load(config_path)
 
@@ -282,7 +292,7 @@ def main():
         raise Exception("input audio is not wav")
     fbx_path = audio_filepath.with_suffix(".fbx")
 
-    files_and_offsets = split_audio(audio_filepath)
+    files_and_offsets = audio_util.split_audio(audio_filepath)
     processor, model = load_models()
 
     total_keys = {}
@@ -301,82 +311,6 @@ def main():
         # print(words, word_start_times, word_end_times)
 
     fbx_writer.write(total_keys, fbx_path)
-
-
-def split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35):
-    # type: (pathlib.Path, int, int) -> Tuple
-
-    keep_silence_ms = min_silence_len
-
-    sound_file = pydub.AudioSegment.from_wav(audio_file.as_posix())
-    audio_chunks = pydub.silence.split_on_silence(
-        sound_file,
-        min_silence_len=min_silence_len,
-        silence_thresh=silence_thresh,
-        keep_silence=keep_silence_ms,
-        seek_step=1,
-    )
-    silences = pydub.silence.detect_silence(
-        sound_file,
-        min_silence_len=min_silence_len,
-        silence_thresh=silence_thresh,
-        seek_step=1,
-    )
-
-    if not audio_chunks or len(audio_chunks) == 1 or not silences:
-        return [], []
-
-    if silences[0][0] == 0:
-        pass
-    else:
-        silences.insert(0, (0, 0))
-
-    silences = [(x + keep_silence_ms if x > 0 else x, y - keep_silence_ms if y > 0 else y) for x, y in silences]
-
-    return audio_chunks, silences
-
-
-def split_audio(audio_file, min_silence_len=500, silence_thresh=-35, maximum_duration=5000):
-    # type: (pathlib.Path, int, int, int) -> List[Tuple[Text, float]]
-    """Split input audio by silence and returns splitted file paths and its
-    offset seconds.
-
-    Here milliseconds
-    """
-
-    print("Preprocess audio file begins. Split files by silence and that are too long")
-    audio_chunks, silences = split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35)
-    if not audio_chunks:
-        return [(audio_file.as_posix(), 0.0)]
-
-    # assert len(audio_chunks) == len(silences)  # nosec
-
-    results = []
-    chunk_count = 0
-    tempdir = tempfile.mkdtemp(audio_file.name)
-    for chunk, silence in zip(audio_chunks, silences):
-
-        duration = len(chunk)
-        if duration > maximum_duration:
-            average_duration_ms = duration / ((duration // maximum_duration) + 1)
-            over_chunks = pydub.utils.make_chunks(chunk, average_duration_ms)
-
-            for oc in over_chunks:
-                out_file = os.path.join(tempdir, "chunk{0}.wav".format(chunk_count))
-                print("exporting", out_file)
-                oc.export(out_file, format="wav")
-                results.append((out_file, silence[1] / 1000.))
-                chunk_count += 1  # noqa
-
-        else:
-            out_file = os.path.join(tempdir, "chunk{0}.wav".format(chunk_count))
-            print("exporting", out_file)
-            chunk.export(out_file, format="wav")
-
-            chunk_count += 1
-            results.append((out_file, silence[1] / 1000.))
-
-    return results
 
 
 if __name__ == "__main__":
