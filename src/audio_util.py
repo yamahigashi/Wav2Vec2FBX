@@ -1,18 +1,8 @@
 import os
 import sys
-# import copy
-# from itertools import groupby
-# import contextlib
-# from collections import defaultdict
-# import argparse
 import pathlib
 import tempfile
 
-# import toml
-# import torch
-# from torch._C import default_generator
-
-import librosa
 import pydub
 import pydub.utils
 import pydub.silence
@@ -38,23 +28,23 @@ if sys.version_info >= (3, 0):
 ##############################################################################
 
 
-def split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35):
+def split_by_silence(audio_file, min_silence_len_ms=500, silence_thresh_db=-35):
     # type: (pathlib.Path, int, int) -> Tuple
 
-    keep_silence_ms = min_silence_len
+    keep_silence_ms = min_silence_len_ms
 
     sound_file = pydub.AudioSegment.from_wav(audio_file.as_posix())
     audio_chunks = pydub.silence.split_on_silence(
         sound_file,
-        min_silence_len=min_silence_len,
-        silence_thresh=silence_thresh,
+        min_silence_len=min_silence_len_ms,
+        silence_thresh=silence_thresh_db,
         keep_silence=keep_silence_ms,
         seek_step=1,
     )
     silences = pydub.silence.detect_silence(
         sound_file,
-        min_silence_len=min_silence_len,
-        silence_thresh=silence_thresh,
+        min_silence_len=min_silence_len_ms,
+        silence_thresh=silence_thresh_db,
         seek_step=1,
     )
 
@@ -71,7 +61,7 @@ def split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35):
     return audio_chunks, silences
 
 
-def split_audio(audio_file, min_silence_len=500, silence_thresh=-35, maximum_duration=5000):
+def split_audio(audio_file, min_silence_len_ms=500, silence_thresh_db=-35, maximum_duration_ms=5000):
     # type: (pathlib.Path, int, int, int) -> List[Tuple[Text, float]]
     """Split input audio by silence and returns splitted file paths and its
     offset seconds.
@@ -80,7 +70,7 @@ def split_audio(audio_file, min_silence_len=500, silence_thresh=-35, maximum_dur
     """
 
     print("Preprocess audio file begins. Split files by silence and that are too long")
-    audio_chunks, silences = split_by_silence(audio_file, min_silence_len=500, silence_thresh=-35)
+    audio_chunks, silences = split_by_silence(audio_file, min_silence_len_ms=500, silence_thresh_db=-35)
     if not audio_chunks:
         return [(audio_file.as_posix(), 0.0)]
 
@@ -92,8 +82,8 @@ def split_audio(audio_file, min_silence_len=500, silence_thresh=-35, maximum_dur
     for chunk, silence in zip(audio_chunks, silences):
 
         duration = len(chunk)
-        if duration > maximum_duration:
-            average_duration_ms = duration / ((duration // maximum_duration) + 1)
+        if duration > maximum_duration_ms:
+            average_duration_ms = duration / ((duration // maximum_duration_ms) + 1)
             over_chunks = pydub.utils.make_chunks(chunk, average_duration_ms)
 
             for oc in over_chunks:

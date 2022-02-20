@@ -6,16 +6,12 @@ import contextlib
 from collections import defaultdict
 import argparse
 import pathlib
-import tempfile
 
 import toml
 import torch
 # from torch._C import default_generator
 
 import librosa
-import pydub
-import pydub.utils
-import pydub.silence
 
 
 from transformers import (
@@ -292,7 +288,8 @@ def main():
         raise Exception("input audio is not wav")
     fbx_path = audio_filepath.with_suffix(".fbx")
 
-    files_and_offsets = audio_util.split_audio(audio_filepath)
+    audio_config = config.get("audio_settings", {})
+    files_and_offsets = audio_util.split_audio(audio_filepath, **audio_config)
     processor, model = load_models()
 
     total_keys = {}
