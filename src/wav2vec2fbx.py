@@ -1,11 +1,12 @@
 import os
 import sys
 import copy
-from itertools import groupby
 import contextlib
-from collections import defaultdict
 import argparse
 import pathlib
+import multiprocessing
+
+import concurrent.futures
 
 import toml
 import torch
@@ -20,10 +21,9 @@ from transformers import (
     # Wav2Vec2PhonemeCTCTokenizer,
 )
 
-from . import (
-    fbx_writer,
-    audio_util,
-)
+
+import fbx_writer
+import audio_util
 
 ##############################################################################
 
@@ -43,7 +43,6 @@ if sys.version_info >= (3, 0):
         Union
     )
 ##############################################################################
-INTERPOLATION_FRAME = 2
 CONFIG_NAME = "config.toml"
 ##############################################################################
 
@@ -125,9 +124,22 @@ def calculate_voice_power(vals, ids):
 
     x, y, z = 0., 0., 0.
 
+    v0 = vals[0].item()
+    v1 = vals[1].item()
+    v2 = vals[2].item()
+
+    if not isinstance(v0, float):
+        raise
+    if not isinstance(v1, float):
+        raise
+    if not isinstance(v2, float):
+        raise
+
+    # -------------------------------------------------
     if ids[0] == 0:
-        y = vals[1].item() + (10. - vals[0].item()) / 2.0  # type: ignore
-        z = vals[2].item() + (10. - vals[0].item()) / 2.0  # type: ignore
+        # if silence prevails, lift the others
+        y = v2 + (10. - v0) / 2.0  # type: float
+        z = v2 + (10. - v0) / 2.0  # type: float
         if y < 5.:
             y = 0.
         if z < 5.:
@@ -135,16 +147,29 @@ def calculate_voice_power(vals, ids):
 
     else:
         x = min(10.0, vals[0].item() * 1.5)  # type: ignore
-        y = vals[1].item() if vals[1] > 4. else 0.
-        z = vals[2].item() if vals[2] > 4. else 0.
+        y = v1 if v1 > 4. else 0.
+        z = v2 if v2 > 4. else 0.
+
+    # -------------------------------------------------
+    # limit total when uttered simultaneously
+    if x > 0.:
+        x = (((1. / (x + y + z)) * x) * 0.5) + (x * 0.5)
+        y = (((1. / (x + y + z)) * y) * 0.5) + (y * 0.5)
+        z = (((1. / (x + y + z)) * z) * 0.5) + (z * 0.5)
+
+    x = 1.0 if x > 10. else x / 10.
+    y = 1.0 if y > 10. else y / 10.
+    z = 1.0 if z > 10. else z / 10.
 
     return x, y, z  # type: ignore
 
 
-def process_audio(processor, model, audio_filepath):
-    # type: (Wav2Vec2Processor, Wav2Vec2ForCTC, Text) -> Tuple[float, torch.Tensor, torch.Tensor]
+def process_audio(processor, model, audio_filepath, proc_num):
+    # type: (Wav2Vec2Processor, Wav2Vec2ForCTC, Text, int) -> Tuple[float, torch.Tensor, torch.Tensor]
 
     speech, sample_rate = librosa.load(audio_filepath, sr=16000)
+    print(sample_rate)
+    raise
     input_values = processor(speech, sampling_rate=sample_rate, return_tensors="pt").input_values.cpu()
     duration_sec = input_values.shape[1] / sample_rate
 
@@ -154,7 +179,7 @@ def process_audio(processor, model, audio_filepath):
     probabilities, ids = torch.topk(logits, k=3, dim=-1)
 
     transcription = processor.decode(predicted_ids[0]).lower()
-    print(f"process {duration_sec:.3f}sec audio file as {transcription}")
+    print(f"process {duration_sec:.3f}sec audio({proc_num}) file as {transcription}")
 
     return duration_sec, probabilities, ids
 
@@ -196,7 +221,7 @@ def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset
                     arpabet = ipa_to_arpabet.get("default", "_")
 
                 if arpabet in animation_frames[i]:
-                    animation_frames[i][arpabet] = 10.0
+                    animation_frames[i][arpabet] += val
                 else: 
                     animation_frames[i][arpabet] = val
 
@@ -206,25 +231,32 @@ def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset
     # we need to specify the start and end frame before and after the key.
     for i, keys in enumerate(copy.deepcopy(animation_frames)):
         for k, _ in keys.items():
-            set_zero_key(animation_frames, k, i)  # animation_frames got side effect
+            set_zero_key(conf, animation_frames, k, i)  # animation_frames got side effect
 
-    object_based_keys = defaultdict(lambda: [])
+    object_based_keys = {}
     for i, keys in enumerate(copy.deepcopy(animation_frames)):
         sec = (i / len(probabilities[0])) * duration_sec + offset
         for phon, val in keys.items():
-            object_based_keys[phon].append((sec, val))
+
+            if phon in object_based_keys:
+                object_based_keys[phon].append((sec, val))
+            else:
+                object_based_keys[phon] = []
+                object_based_keys[phon].append((sec, val))
 
     return object_based_keys
 
 
-def set_zero_key(animation_keys, phon, frame_index):
-    # type: (List[Dict[Text, float]], Text, int) -> ...
+def set_zero_key(conf, animation_keys, phon, frame_index):
+    # type: (MutableMapping[Text, Any], List[Dict[Text, float]], Text, int) -> ...
     """CAUTION: animation_keys is mutable and changed by calling this function."""
 
+    interpolation = conf.get("keyframe", {}).get("interpolation", 5)
+
     prev_key_index_start = max(1, frame_index - 1)
-    prev_key_index_stop = max(1, frame_index - INTERPOLATION_FRAME - 1)
+    prev_key_index_stop = max(1, frame_index - interpolation - 1)
     next_key_index_start = min(frame_index + 1, len(animation_keys))
-    next_key_index_stop = min(frame_index + INTERPOLATION_FRAME + 1, len(animation_keys))
+    next_key_index_stop = min(frame_index + interpolation + 1, len(animation_keys))
 
     # ------------------------------
     for frame in range(prev_key_index_start, prev_key_index_stop, -1):
@@ -250,6 +282,69 @@ def load_ipa_arpabet_table(conf):
     return conf.get("ipa_to_arpabet", {})
 
 
+def async_split_audio(audio_filepath, audio_settings):
+    files_and_offsets = audio_util.split_audio(audio_filepath, **audio_settings)
+    return files_and_offsets
+
+
+def async_load_models():
+    with torch.no_grad():
+        processor, model = load_models()
+        return processor, model
+
+
+def async_process_audio(config, processor, model, file_path, offset, proc_num):
+    duration_sec, probabilities, ids = process_audio(processor, model, file_path, proc_num)
+    keys = generate_keyframes(config, processor, duration_sec, probabilities, ids, offset)
+
+    return keys
+
+
+def async_main():
+
+    args = parse_args()
+    config = load_config(args)
+
+    audio_filepath = args.input_audiofile  # type: pathlib.Path
+    if audio_filepath.suffix != ".wav":
+        raise Exception("input audio is not wav")
+    fbx_path = audio_filepath.with_suffix(".fbx")
+
+    audio_config = config.get("audio_settings", {})
+
+    futures = []
+    with concurrent.futures.ProcessPoolExecutor(2) as executor:
+        f = executor.submit(async_split_audio, audio_filepath, audio_config)
+        futures.append(f)
+
+        f = executor.submit(async_load_models)
+        futures.append(f)
+
+    concurrent.futures.wait(futures)
+    files_and_offsets = futures[0].result()
+    processor, model = futures[1].result()
+
+    total_keys = {}
+    futures = []
+    proc_count = min(int(multiprocessing.cpu_count() / 2), len(files_and_offsets))
+    with concurrent.futures.ProcessPoolExecutor(proc_count) as executor:
+        for i, (file_path, offset) in enumerate(files_and_offsets):
+            f = executor.submit(async_process_audio, config, processor, model, file_path, offset, i)
+            futures.append(f)
+
+    concurrent.futures.wait(futures)
+    for f in futures:
+        keys = f.result()
+        for key, value in keys.items():
+            if key in total_keys:
+                total_keys[key].extend(value)
+            else:
+                total_keys[key] = value
+
+    fbx_writer.write(total_keys, fbx_path)
+    print("done!!")
+
+
 def main():
 
     args = parse_args()
@@ -261,12 +356,13 @@ def main():
     fbx_path = audio_filepath.with_suffix(".fbx")
 
     audio_config = config.get("audio_settings", {})
+
     files_and_offsets = audio_util.split_audio(audio_filepath, **audio_config)
     processor, model = load_models()
 
     total_keys = {}
-    for file_path, offset in files_and_offsets:
-        duration_sec, probabilities, ids = process_audio(processor, model, file_path)
+    for i, (file_path, offset) in enumerate(files_and_offsets):
+        duration_sec, probabilities, ids = process_audio(processor, model, file_path, i)
         # print(f"{file_path}: duration: {duration_sec}, offset:{offset}")
         keys = generate_keyframes(config, processor, duration_sec, probabilities, ids, offset)
 
@@ -277,7 +373,12 @@ def main():
                 total_keys[key] = value
 
     fbx_writer.write(total_keys, fbx_path)
+    print("done!!")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    import timeit
+    # print(timeit.timeit("main()", setup="from __main__ import main", number=2))
+    # print(timeit.timeit("asyncio.run(async_main())", setup="import asyncio;from __main__ import async_main", number=2))
+    async_main()
+    # asyncio.run(main())
