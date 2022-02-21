@@ -39,6 +39,7 @@ def write(keys, fbx_path):
             curve.KeyModifyEnd()
 
     FbxCommon.SaveScene(sdk, scene, fbx_path.as_posix())
+    print(f"write fbx to: {fbx_path.as_posix()}")
     sdk.Destroy()
 
 
@@ -70,10 +71,21 @@ def add_node(sdk, scene, layer, node_name):
 
 def set_keyframe(curve, node, frame_sec, val):
     time = FbxCommon.FbxTime()
-    key = FbxCommon.FbxAnimCurveKey()
-
     time.SetSecondDouble(frame_sec)
+
+    key = FbxCommon.FbxAnimCurveKey()
     key.Set(time, val)
+
+    if val == 0.0:
+        # set zero key to flat
+        key.SetTangentMode(FbxCommon.FbxAnimCurveDef.eTangentUser)
+        key.SetTangentWeightMode(FbxCommon.FbxAnimCurveDef.eWeightedNone)
+        key.SetDataFloat(FbxCommon.FbxAnimCurveDef.eRightSlope, 0.0)
+        key.SetDataFloat(FbxCommon.FbxAnimCurveDef.eNextLeftSlope, 0.0)
+        key.SetDataFloat(FbxCommon.FbxAnimCurveDef.eWeights, 0.0)
+        key.SetDataFloat(FbxCommon.FbxAnimCurveDef.eRightWeight, 0.333)
+        key.SetDataFloat(FbxCommon.FbxAnimCurveDef.eNextLeftWeight, 0.333)
+
     curve.KeyAdd(time, key)
 
 
@@ -90,10 +102,9 @@ def test():
         "m": [(0.648125, 0.0), (0.70888671875, 5.360048294067383), (0.729140625, 8.003581523895264), (0.74939453125, 10.0), (0.81015625, 0.0)],
     }
 
-    fbx_path = os.path.join(os.path.dirname(__file__), "test.fbx")
-    write(entries, fbx_path, 1.5)
+    fbx_path = pathlib.Path(os.path.join(os.path.dirname(__file__), "test.fbx"))
+    write(entries, fbx_path)
 
 
 if __name__ == "__main__":
-    pass
-    # test()
+    test()
