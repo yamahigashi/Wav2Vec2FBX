@@ -42,6 +42,8 @@ if sys.version_info >= (3, 0):
         Generator,
         Union
     )
+    ConfType = MutableMapping[Text, Any]
+
 ##############################################################################
 CONFIG_NAME = "config.toml"
 ##############################################################################
@@ -59,7 +61,7 @@ def parse_args():
 
 
 def load_config(args):
-    # type: (argparse.Namespace) -> MutableMapping[Text, Any]
+    # type: (argparse.Namespace) -> ConfType
 
     if args.config_file is not None:
         return toml.load(args.config_file)
@@ -168,8 +170,6 @@ def process_audio(processor, model, audio_filepath, proc_num):
     # type: (Wav2Vec2Processor, Wav2Vec2ForCTC, Text, int) -> Tuple[float, torch.Tensor, torch.Tensor]
 
     speech, sample_rate = librosa.load(audio_filepath, sr=16000)
-    print(sample_rate)
-    raise
     input_values = processor(speech, sampling_rate=sample_rate, return_tensors="pt").input_values.cpu()
     duration_sec = input_values.shape[1] / sample_rate
 
@@ -197,8 +197,8 @@ class AnimCurve():
         pass
 
 
-def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset):
-    # type: (MutableMapping[Text, Any], Wav2Vec2Processor, float, torch.Tensor, torch.Tensor, float) -> Dict
+def expand_tensor_to_frames(conf, processor, probabilities, ids):
+    # type: (...) -> List[Dict[Text, float]]
 
     # animation_frames represents all frame plotted including empty move.
     animation_frames = []  # type: List[Dict[Text, float]]
@@ -218,14 +218,46 @@ def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset
                 arpabet = ipa_to_arpabet.get(ipa)
                 if not arpabet:
                     print(f"ipa not found in the config.toml table replacing _: {ipa}")
-                    arpabet = ipa_to_arpabet.get("default", "_")
+                    # arpabet = ipa_to_arpabet.get("default", "_")
+                    ipa = "default"
 
-                if arpabet in animation_frames[i]:
-                    animation_frames[i][arpabet] += val
+                if ipa in animation_frames[i]:
+                    animation_frames[i][ipa] += val
                 else: 
-                    animation_frames[i][arpabet] = val
+                    animation_frames[i][ipa] = val
 
-    # TODO: support the ipa that has multiple visemes.
+    return animation_frames
+
+
+def tokenize_ipa_into_oral_morphemes(conf, frames):
+    # type: (ConfType, List[Dict[Text, float]]) -> List[Dict[Text, float]]
+
+    interpolation = conf.get("keyframe", {}).get("consecutive_viseme_frame", 3)
+    ipa_to_arpabet = load_ipa_arpabet_table(conf)
+    res = []
+    for _ in frames:
+        res.append({})
+
+    for i, keys in enumerate(copy.deepcopy(frames)):
+        for k, v in keys.items():
+            arpabets = ipa_to_arpabet.get(k, ["_"])
+
+            for j, arpabet in enumerate(arpabets):
+                index = i + j * interpolation
+                if index > len(res):
+                    for _ in range(len(res) - index + 1):
+                        res.append({})
+
+                res[index][arpabet] = v
+
+    return res
+
+
+def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset):
+    # type: (ConfType, Wav2Vec2Processor, float, torch.Tensor, torch.Tensor, float) -> Dict
+
+    animation_frames = expand_tensor_to_frames(conf, processor, probabilities, ids)
+    animation_frames = tokenize_ipa_into_oral_morphemes(conf, animation_frames)
 
     # Since only voiced keys are placed in the `animation_frames` here,
     # we need to specify the start and end frame before and after the key.
@@ -248,7 +280,7 @@ def generate_keyframes(conf, processor, duration_sec, probabilities, ids, offset
 
 
 def set_zero_key(conf, animation_keys, phon, frame_index):
-    # type: (MutableMapping[Text, Any], List[Dict[Text, float]], Text, int) -> ...
+    # type: (ConfType, List[Dict[Text, float]], Text, int) -> ...
     """CAUTION: animation_keys is mutable and changed by calling this function."""
 
     interpolation = conf.get("keyframe", {}).get("interpolation", 5)
@@ -277,7 +309,7 @@ def set_zero_key(conf, animation_keys, phon, frame_index):
 
 
 def load_ipa_arpabet_table(conf):
-    # type: (MutableMapping[Text, Any]) -> Dict[Text, Text]
+    # type: (ConfType) -> Dict[Text, List[Text]]
 
     return conf.get("ipa_to_arpabet", {})
 
@@ -377,8 +409,8 @@ def main():
 
 
 if __name__ == '__main__':
-    import timeit
     # print(timeit.timeit("main()", setup="from __main__ import main", number=2))
     # print(timeit.timeit("asyncio.run(async_main())", setup="import asyncio;from __main__ import async_main", number=2))
     async_main()
+    # main()
     # asyncio.run(main())
