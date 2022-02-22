@@ -31,11 +31,11 @@ cd Wav2Vec2FBX
 pip install requirements.txt
 ```
 
-### FBX python SDK 
+#### FBX python SDK 
 https://www.autodesk.com/developer-network/platform-technologies/fbx-sdk-2020-0
 download FBX SDK from autodesk and place libraries into your python path.
 
-### Run
+## Run
 ```sh
 python src/wav2vec2fbx.py input_audio.wav
 ```
