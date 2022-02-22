@@ -85,6 +85,7 @@ The phonemes to morphemes correspondence table. The phonemes determined by Wav2V
 # -------- snip --------------
 ```
 ## Build binary using cx_Freeze
+You can deploy this package as binary for the environment without python using `cx_Freeze`.
 ```bash
 python setup.py build
 ```
