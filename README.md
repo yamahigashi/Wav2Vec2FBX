@@ -1,6 +1,6 @@
 # Wav2Vec2FBX
 
-> Generate an FBX of a phoneme lip-sync animation from an sigle audio file, using Wav2Vec2 to analyze the phonemes.
+> Generate an FBX of a phoneme lip-sync animation from an sigle audio file, using Wav2Vec2 to analyze the phonemes for helps the animators starts with very basic animation.
 > 
 ![alt text](https://github.com/yamahigashi/Wav2Vec2FBX/blob/doc/Screenshot_434.png?raw=true)
 
