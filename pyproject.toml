@@ -206,6 +206,8 @@ extraPaths = [
   # "**/python",  # wildcard does not supported here...
   "python",
   "vendor_python",
+  "lib",
+  "src",
 ]
 
 exclude = [
