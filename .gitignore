@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+lib/fbx*
 lib64/
 parts/
 sdist/
