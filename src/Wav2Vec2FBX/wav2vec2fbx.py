@@ -5,15 +5,11 @@ import contextlib
 import argparse
 import pathlib
 import multiprocessing
-
 import concurrent.futures
 
 import toml
 import torch
-# from torch._C import default_generator
-
 import librosa
-
 
 from transformers import (
     Wav2Vec2Processor,
@@ -21,11 +17,20 @@ from transformers import (
     # Wav2Vec2PhonemeCTCTokenizer,
 )
 
-
-import fbx_writer
-import audio_util
-
+if getattr(sys, 'frozen', False):
+    # frozen
+    from Wav2Vec2FBX import (
+        fbx_writer,
+        audio_util
+    )
+else:
+    # unfrozen
+    from . import (
+        fbx_writer,
+        audio_util
+    )
 ##############################################################################
+
 
 if sys.version_info >= (3, 0):
     # For type annotation
@@ -80,6 +85,9 @@ def load_config(args):
         os.path.join(dir_, "../assets", CONFIG_NAME),
     ]
 
+    if "src/Wav2Vec2FBX" in dir_.replace(os.sep, "/"):
+        config_paths.append(os.path.join(dir_, "../../assets", CONFIG_NAME))
+
     for config_path in config_paths:
         if os.path.exists(config_path):
             return toml.load(config_path)
@@ -87,8 +95,8 @@ def load_config(args):
     raise Exception("config file not found {}".format(config_paths))
 
 
-def load_models(model_name='facebook/wav2vec2-large-960h-lv60-self'):
-    # type: (Text) -> Tuple[Wav2Vec2Processor, Wav2Vec2ForCTC]
+def load_models():
+    # type: () -> Tuple[Wav2Vec2Processor, Wav2Vec2ForCTC]
     """load model & audio and run audio through model."""
 
     print("Start initialization of Wav2Vec2 models.")
@@ -96,13 +104,14 @@ def load_models(model_name='facebook/wav2vec2-large-960h-lv60-self'):
     model_name = "facebook/wav2vec2-lv-60-espeak-cv-ft"
     model_name = "facebook/wav2vec2-xlsr-53-espeak-cv-ft"
 
-    processor = Wav2Vec2Processor.from_pretrained(model_name)
-    model = Wav2Vec2ForCTC.from_pretrained(model_name).cpu()
-    # tokenizer = Wav2Vec2PhonemeCTCTokenizer.from_pretrained(model_name)
+    with torch.no_grad():
+        processor = Wav2Vec2Processor.from_pretrained(model_name)
+        model = Wav2Vec2ForCTC.from_pretrained(model_name).cpu()
+        # tokenizer = Wav2Vec2PhonemeCTCTokenizer.from_pretrained(model_name)
 
-    print("Completed initialzation of Wav2Vec2 models")
+        print("Completed initialzation of Wav2Vec2 models")
 
-    return processor, model
+        return processor, model
 
 
 def is_silence(vals, ids):
@@ -320,9 +329,8 @@ def async_split_audio(audio_filepath, audio_settings):
 
 
 def async_load_models():
-    with torch.no_grad():
-        processor, model = load_models()
-        return processor, model
+    processor, model = load_models()
+    return processor, model
 
 
 def async_process_audio(config, processor, model, file_path, offset, proc_num):
@@ -332,7 +340,7 @@ def async_process_audio(config, processor, model, file_path, offset, proc_num):
     return keys
 
 
-def async_main():
+def async_execute():
 
     args = parse_args()
     config = load_config(args)
@@ -377,7 +385,7 @@ def async_main():
     print("done!!")
 
 
-def main():
+def execute():
 
     args = parse_args()
     config = load_config(args)
@@ -409,8 +417,14 @@ def main():
 
 
 if __name__ == '__main__':
-    # print(timeit.timeit("main()", setup="from __main__ import main", number=2))
-    # print(timeit.timeit("asyncio.run(async_main())", setup="import asyncio;from __main__ import async_main", number=2))
-    async_main()
-    # main()
-    # asyncio.run(main())
+    # print(timeit.timeit("execute()", setup="from __main__ import execute", number=2))
+    # print(timeit.timeit("asyncio.run(async_execute())", setup="import asyncio;from __main__ import async_execute", number=2))
+
+    if getattr(sys, 'frozen', False):
+        # frozen
+        execute()
+    else:
+        # unfrozen
+        async_execute()
+    # execute()
+    # asyncio.run(execute())
