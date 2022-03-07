@@ -391,8 +391,8 @@ def execute():
     config = load_config(args)
 
     audio_filepath = args.input_audiofile  # type: pathlib.Path
-    if audio_filepath.suffix != ".wav":
-        raise Exception("input audio is not wav")
+    # if audio_filepath.suffix != ".wav":
+    #     raise Exception("input audio is not wav")
     fbx_path = audio_filepath.with_suffix(".fbx")
 
     audio_config = config.get("audio_settings", {})

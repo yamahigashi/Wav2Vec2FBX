@@ -33,7 +33,12 @@ def split_by_silence(audio_file, min_silence_len_ms=500, silence_thresh_db=-35):
 
     keep_silence_ms = min_silence_len_ms
 
-    sound_file = pydub.AudioSegment.from_wav(audio_file.as_posix())
+    audio_suffix = audio_file.suffix.split(".")[-1]
+    if audio_suffix == "wav":
+        sound_file = pydub.AudioSegment.from_wav(audio_file.as_posix())
+    else:
+        sound_file = pydub.AudioSegment.from_file(audio_file.as_posix(), audio_suffix)
+
     audio_chunks = pydub.silence.split_on_silence(
         sound_file,
         min_silence_len=min_silence_len_ms,
